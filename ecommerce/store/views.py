@@ -1,14 +1,19 @@
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.http import JsonResponse
+from django.contrib import messages
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.forms import UserCreationForm
+from .utils import cookieCart, cartData, guestOrder
+from .forms import *
+from .decorators import *
 import json
 import datetime
 from .models import *
-from .utils import cookieCart, cartData, guestOrder
 # Create your views here.
 
 
 def store(request):
-    data = cookieCart(request)
+    data = cartData(request)
     cartItems = data['cartItems']
 
     products = Product.objects.all()
@@ -20,7 +25,7 @@ def store(request):
 
 
 def cart(request):
-    data = cookieCart(request)
+    data = cartData(request)
     cartItems = data['cartItems']
     order = data['order']
     items = data['items']
@@ -30,11 +35,12 @@ def cart(request):
         'order': order,
         'cartItems': cartItems
     }
+    print(context)
     return render(request, 'store/cart.html', context)
 
 
 def checkout(request):
-    data = cookieCart(request)
+    data = cartData(request)
     cartItems = data['cartItems']
     order = data['order']
     items = data['items']
@@ -99,3 +105,45 @@ def processOrder(request):
         )
 
     return JsonResponse('Payment complete!', safe=False)
+
+
+@unauthenticated_user
+def loginPage(request):
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        user = authenticate(request, username=username, password=password)
+        if user is not None:
+            login(request, user)
+            return redirect('store')
+        else:
+            messages.info(request, 'Username OR Password is incorrect')
+    context = {
+    }
+    return render(request, 'store/login.html', context)
+
+
+def logoutUser(request):
+    logout(request)
+    return redirect('store')
+
+
+@unauthenticated_user
+def registerPage(request):
+    form = CreateUserForm()
+    if request.method == 'POST':
+        form = CreateUserForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            username = form.cleaned_data.get('username')
+            name = form.cleaned_data.get('last_name')
+            email = form.cleaned_data.get('email')
+            customer = Customer.objects.create(
+                user=user, name=name, email=email)
+            customer.save()
+            messages.success(request, 'Account was created for ' + username)
+            return redirect('login')
+    context = {
+        'form': form
+    }
+    return render(request, 'store/register.html', context)
